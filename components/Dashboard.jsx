@@ -8,6 +8,8 @@ const DEFAULT_SKILLS = [
   'Socket.IO', 'BullMQ', 'REST APIs', 'WebSockets', 'CI/CD',
 ];
 
+const PAGE_SIZE = 10; // jobs shown per page
+
 export default function Dashboard() {
   const [skills, setSkills] = useState(DEFAULT_SKILLS);
   const [skillInput, setSkillInput] = useState('');
@@ -17,16 +19,61 @@ export default function Dashboard() {
   const [count, setCount] = useState(20);
   const [recencyDays, setRecencyDays] = useState(7);
   const [resumeText, setResumeText] = useState('');
+  const [mode, setMode] = useState('jobs'); // 'jobs' | 'directory'
 
   const [phase, setPhase] = useState('idle'); // idle | running | done | error
   const [progress, setProgress] = useState('');
   const [error, setError] = useState(null);
   const [jobs, setJobs] = useState([]);
+  const [aggregates, setAggregates] = useState([]);
+  const [page, setPage] = useState(1);
   const [meta, setMeta] = useState(null);
   const [viewingCache, setViewingCache] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [resumeName, setResumeName] = useState('');
   const pollRef = useRef(null);
+  const fileRef = useRef(null);
 
   useEffect(() => () => clearInterval(pollRef.current), []);
+
+  // When the user switches mode, clear the on-screen results so they never see
+  // the other mode's list. Each mode shows only its own saved list (via the
+  // separate stores) when they click "View saved".
+  const switchMode = (m) => {
+    if (m === mode) return;
+    setMode(m);
+    setJobs([]); setAggregates([]); setMeta(null); setViewingCache(false);
+    setPhase('idle'); setError(null);
+  };
+
+  const onUploadResume = async (file) => {
+    if (!file) return;
+    setUploading(true); setError(null);
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const r = await fetch('/api/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdfBase64: base64 }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Could not read resume');
+      if (data.skills?.length) setSkills(data.skills);
+      if (data.role) setRole(data.role);
+      if (data.years) setYears(data.years);
+      if (data.resumeText) setResumeText(data.resumeText);
+      setResumeName(file.name);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const addSkill = () => {
     const s = skillInput.trim();
@@ -35,13 +82,17 @@ export default function Dashboard() {
   const removeSkill = (s) => setSkills(skills.filter((x) => x !== s));
 
   const run = async () => {
-    setPhase('running'); setError(null); setJobs([]); setMeta(null);
+    setPhase("running"); setError(null); setJobs([]); setAggregates([]); setMeta(null);
     setViewingCache(false); setProgress('Starting…');
     try {
       const startRes = await fetch('/api/search/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skills, role, location, years, count, recencyDays, resumeText }),
+        body: JSON.stringify({
+          mode, skills, role, location, years, count, recencyDays, resumeText,
+          city: location.split(/[ ,]/)[0] || 'Bangalore',
+          stack: skills.join(', '),
+        }),
       });
       const { jobId, error: startErr } = await startRes.json();
       if (!jobId) throw new Error(startErr || 'Could not start search');
@@ -54,6 +105,8 @@ export default function Dashboard() {
           if (s.status === 'done') {
             clearInterval(pollRef.current);
             setJobs(s.result?.jobs || []);
+            setAggregates(s.result?.aggregates || []);
+            setPage(1);
             setMeta(s.result?.meta || null);
             setPhase('done');
           } else if (s.status === 'error') {
@@ -71,26 +124,33 @@ export default function Dashboard() {
   };
 
   const viewSaved = async () => {
-    const r = await fetch('/api/cache');
+    const type = mode === 'directory' ? 'directory' : 'jobs';
+    const r = await fetch(`/api/cache?type=${type}`);
     const data = await r.json();
     setJobs(data.jobs || []);
-    setMeta({ verifiedLive: data.jobs?.length || 0, cached: true, ttlDays: data.ttlDays });
+    setMeta({
+      verifiedLive: data.jobs?.length || 0,
+      cached: true,
+      ttlDays: data.ttlDays,
+      mode: type,
+    });
     setViewingCache(true);
     setPhase('done');
   };
 
   const clearSaved = async () => {
-    if (!confirm('Clear all saved results? Next search will start fresh (no dedup).')) return;
-    await fetch('/api/cache', { method: 'DELETE' });
-    setJobs([]); setMeta(null); setViewingCache(false); setPhase('idle');
+    const type = mode === 'directory' ? 'directory' : 'jobs';
+    if (!confirm(`Clear saved ${type} results? Next ${type} search will start fresh (no dedup).`)) return;
+    await fetch(`/api/cache?type=${type}`, { method: 'DELETE' });
+    setJobs([]); setAggregates([]); setMeta(null); setViewingCache(false); setPhase('idle');
   };
 
   const exportCsv = () => {
     if (!jobs.length) return;
-    const head = ['Match%','Company','Role','Location','Source','Posted','Salary','Apply URL','Matched','Missing','Note'];
+    const head = ['Match%','Company','Website','Role','Location','Source','Posted','Apply URL','Matched Skills','Note'];
     const rows = jobs.map((j) => [
-      j.matchPercentage, j.company, j.role, j.location, j.source, j.postedDate,
-      j.salary, j.applyUrl, (j.matchedSkills||[]).join('; '), (j.missingSkills||[]).join('; '), j.note,
+      j.matchPercentage, j.company, j.website || j.applyUrl, j.role, j.location, j.source,
+      j.postedDate, j.applyUrl, (j.matchedSkills||[]).join('; '), j.note,
     ]);
     const csv = [head, ...rows]
       .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -107,13 +167,33 @@ export default function Dashboard() {
       <header className={styles.header}>
         <h1 className={styles.heading}>Job Hunter</h1>
         <p className={styles.subheading}>
-          Searches LinkedIn, Cutshort, Glassdoor, Lever, Greenhouse & career pages for
-          recent openings, ranked by resume fit. Saves results 3 days and skips ones
-          you've already seen.
+          Finds full-time Full Stack / Backend roles at mid-size startups & skill-focused
+          companies — skips the famous DSA-heavy unicorns, MNCs, and contract roles.
+          Recent only, ranked by resume fit.
         </p>
       </header>
 
       <section className={styles.card}>
+        <div className={styles.modeToggle}>
+          <button
+            className={mode === 'jobs' ? styles.modeActive : styles.modeBtn}
+            onClick={() => switchMode('jobs')}
+          >
+            Job postings
+          </button>
+          <button
+            className={mode === 'directory' ? styles.modeActive : styles.modeBtn}
+            onClick={() => switchMode('directory')}
+          >
+            Company directory (cold-email)
+          </button>
+        </div>
+        <p className={styles.modeHint}>
+          {mode === 'jobs'
+            ? 'Finds live job postings ranked by resume fit.'
+            : 'Finds software-services companies (GoodFirms/Clutch) to email directly — like how you found Technoloader. Many don\u2019t post jobs; you email HR.'}
+        </p>
+
         <label className={styles.label}>Target role</label>
         <input className={styles.input} value={role} onChange={(e) => setRole(e.target.value)} />
 
@@ -139,8 +219,27 @@ export default function Dashboard() {
           {skills.map((s) => <span key={s} className={styles.tag} onClick={() => removeSkill(s)}>{s} ×</span>)}
         </div>
 
-        <label className={styles.label}>Paste your resume text (optional — sharper scoring)</label>
-        <textarea className={styles.textarea} rows={5} placeholder="Paste resume here…"
+        <label className={styles.label}>Resume — upload PDF (auto-extracts your skills)</label>
+        <div className={styles.uploadRow}>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/pdf"
+            style={{ display: 'none' }}
+            onChange={(e) => onUploadResume(e.target.files?.[0])}
+          />
+          <button
+            className={styles.addBtn}
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? 'Reading PDF…' : '📄 Upload resume PDF'}
+          </button>
+          {resumeName && <span className={styles.fileName}>✓ {resumeName}</span>}
+        </div>
+
+        <label className={styles.label}>…or paste resume text</label>
+        <textarea className={styles.textarea} rows={4} placeholder="Paste resume here…"
           value={resumeText} onChange={(e) => setResumeText(e.target.value)} />
 
         <div className={styles.twoCol}>
@@ -177,10 +276,10 @@ export default function Dashboard() {
 
         <div className={styles.secondaryRow}>
           <button className={styles.linkToggle} onClick={viewSaved} disabled={running}>
-            View saved (last 3 days)
+            {mode === 'directory' ? 'View saved companies (30 days)' : 'View saved jobs (3 days)'}
           </button>
           <button className={styles.linkToggle} onClick={clearSaved} disabled={running}>
-            Clear saved
+            Clear saved {mode === 'directory' ? 'companies' : 'jobs'}
           </button>
         </div>
 
@@ -191,13 +290,19 @@ export default function Dashboard() {
         <section className={styles.card}>
           <div className={styles.resultHead}>
             <h2 className={styles.heading}>
-              {viewingCache ? `${jobs.length} saved openings` : `${jobs.length} new openings`}
+              {viewingCache
+                ? `${jobs.length} saved`
+                : meta?.mode === 'directory'
+                ? `${jobs.length} companies to email`
+                : `${jobs.length} new openings`}
             </h2>
             {meta && (
               <span className={styles.meta}>
                 {meta.cached
                   ? `cached · free to view · ${meta.ttlDays}-day window`
-                  : `${meta.excludedAlreadySeen || 0} skipped (already seen) · ${meta.webSearches} searches · ${meta.verifiedLive} live`}
+                  : meta.mode === 'directory'
+                  ? `${meta.excludedJunk || 0} junk dropped · ${meta.verifiedLive} real companies · ${meta.webSearches} searches`
+                  : `${meta.totalShown || 0} shown · ${meta.verifiedCount || 0} link-checked · ${meta.aggregateCount || 0} listing pages below · ${meta.excludedContract || 0} contract filtered`}
               </span>
             )}
           </div>
@@ -217,9 +322,55 @@ export default function Dashboard() {
                 <button className={styles.addBtn} onClick={exportCsv}>Download CSV</button>
               </div>
               <div className={styles.jobs}>
-                {jobs.map((j, i) => <CompanyCard key={i} job={j} />)}
+                {jobs
+                  .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+                  .map((j, i) => <CompanyCard key={i} job={j} />)}
               </div>
+
+              {jobs.length > PAGE_SIZE && (
+                <div className={styles.pagination}>
+                  <button
+                    className={styles.pageBtn}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                  >
+                    ← Prev
+                  </button>
+                  <span className={styles.pageInfo}>
+                    Page {page} of {Math.ceil(jobs.length / PAGE_SIZE)}
+                  </span>
+                  <button
+                    className={styles.pageBtn}
+                    onClick={() => setPage((p) => Math.min(Math.ceil(jobs.length / PAGE_SIZE), p + 1))}
+                    disabled={page >= Math.ceil(jobs.length / PAGE_SIZE)}
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
             </>
+          )}
+
+          {/* Aggregate listing pages — not specific companies, but real search
+              pages on Cutshort/LinkedIn/etc. you can browse yourself. */}
+          {!viewingCache && aggregates.length > 0 && (
+            <div className={styles.aggregates}>
+              <h3 className={styles.aggHeading}>
+                Listing pages to browse yourself ({aggregates.length})
+              </h3>
+              <p className={styles.aggHint}>
+                These aren’t single companies — they’re search/listing pages found on job
+                sites. Open them and scan for roles that fit you.
+              </p>
+              <div className={styles.aggList}>
+                {aggregates.map((a, i) => (
+                  <a key={i} className={styles.aggRow} href={a.url} target="_blank" rel="noopener noreferrer">
+                    <span className={styles.aggSource}>{a.source}</span>
+                    <span className={styles.aggLabel}>{a.label}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
           )}
         </section>
       )}

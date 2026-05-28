@@ -100,3 +100,65 @@
 
 .secondaryRow { display: flex; justify-content: space-between; margin-top: 12px; }
 .secondaryRow .linkToggle { font-size: 0.82rem; }
+
+.jobWebsite {
+  display: inline-block; margin-top: 8px; font-size: 0.88rem;
+  color: #e91e8c; font-weight: 500;
+}
+.jobWebsite:hover { text-decoration: underline; }
+
+.modeToggle { display: flex; gap: 8px; margin-bottom: 10px; }
+.modeBtn, .modeActive {
+  flex: 1; padding: 10px; border-radius: 8px; font-size: 0.88rem; font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); color: rgba(245,240,255,0.6);
+}
+.modeActive {
+  background: rgba(233,30,140,0.15); color: #e91e8c; border-color: rgba(233,30,140,0.4);
+}
+.modeBtn:hover { border-color: rgba(255,255,255,0.25); }
+.modeHint { font-size: 0.82rem; color: rgba(245,240,255,0.5); margin-bottom: 16px; line-height: 1.5; }
+
+.uploadRow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fileName { font-size: 0.85rem; color: #10b981; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.badgeOk {
+  font-size: 0.72rem; padding: 3px 9px; border-radius: 10px;
+  background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.3);
+}
+.badgeWarn {
+  font-size: 0.72rem; padding: 3px 9px; border-radius: 10px;
+  background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3);
+}
+.badgeStale {
+  font-size: 0.72rem; padding: 3px 9px; border-radius: 10px;
+  background: rgba(148,163,184,0.12); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3);
+}
+
+.pagination {
+  display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 20px;
+}
+.pageBtn {
+  padding: 8px 16px; border-radius: 8px; font-size: 0.88rem; font-weight: 600;
+  background: rgba(233,30,140,0.15); color: #e91e8c; border: 1px solid rgba(233,30,140,0.35);
+}
+.pageBtn:disabled { opacity: 0.4; }
+.pageInfo { font-size: 0.85rem; color: rgba(245,240,255,0.6); }
+
+.aggregates {
+  margin-top: 28px; padding-top: 22px; border-top: 1px dashed rgba(255,255,255,0.15);
+}
+.aggHeading { font-size: 1rem; color: #f5f0ff; margin: 0 0 6px; }
+.aggHint { font-size: 0.82rem; color: rgba(245,240,255,0.5); margin: 0 0 14px; line-height: 1.5; }
+.aggList { display: flex; flex-direction: column; gap: 8px; }
+.aggRow {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; color: #f5f0ff;
+}
+.aggRow:hover { border-color: #e91e8c; opacity: 1; }
+.aggSource {
+  font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 8px;
+  background: rgba(96,165,250,0.12); color: #93c5fd; white-space: nowrap;
+}
+.aggLabel { font-size: 0.85rem; color: rgba(245,240,255,0.75); }

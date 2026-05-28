@@ -1,0 +1,25 @@
+services:
+  job-hunter:
+    build: .
+    image: job-hunter:latest
+    container_name: job-hunter
+    ports:
+      - "3000:3000"
+    environment:
+      # Reads from a local .env file (see .env.example). Never bake the key into the image.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
+      - NODE_ENV=production
+    volumes:
+      # Persist the 3-day result cache across restarts.
+      - job-hunter-cache:/app/.cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  job-hunter-cache:

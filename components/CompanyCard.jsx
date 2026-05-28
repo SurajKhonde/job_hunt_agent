@@ -6,6 +6,10 @@ export default function CompanyCard({ job }) {
   const color = job.matchPercentage >= 85 ? '#10b981'
     : job.matchPercentage >= 70 ? '#f59e0b' : '#94a3b8';
 
+  // Prefer the company's own website; fall back to the apply URL's domain.
+  const website = job.website || job.applyUrl || '';
+  const domain = website.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+
   return (
     <div className={styles.job}>
       <div className={styles.jobTop}>
@@ -13,17 +17,33 @@ export default function CompanyCard({ job }) {
           <div className={styles.jobCompany}>{job.company}</div>
           <div className={styles.jobRole}>{job.role}</div>
         </div>
-        <span className={styles.matchBadge} style={{ background: color }}>
-          {job.matchPercentage}%
-        </span>
+        {!job.directory && (
+          <span className={styles.matchBadge} style={{ background: color }}>
+            {job.matchPercentage}%
+          </span>
+        )}
       </div>
+
+      {website && (
+        <a className={styles.jobWebsite} href={website} target="_blank" rel="noopener noreferrer">
+          🌐 {domain}
+        </a>
+      )}
 
       <div className={styles.jobMeta}>
         <span>{job.location}</span>
+        {job.postedDate && <><span className={styles.dot}>·</span><span>{job.postedDate}</span></>}
         <span className={styles.dot}>·</span>
         <span>{job.source}</span>
-        {job.postedDate && <><span className={styles.dot}>·</span><span>{job.postedDate}</span></>}
-        {job.salary && <><span className={styles.dot}>·</span><span>{job.salary}</span></>}
+      </div>
+
+      <div className={styles.badges}>
+        {!job.directory && (
+          job.linkVerified
+            ? <span className={styles.badgeOk}>✓ link checked</span>
+            : <span className={styles.badgeWarn}>⚠ link unverified — open to confirm</span>
+        )}
+        {job.stale && <span className={styles.badgeStale}>may be older than your window</span>}
       </div>
 
       {job.matchedSkills?.length > 0 && (
@@ -37,11 +57,11 @@ export default function CompanyCard({ job }) {
       <div className={styles.cardActions}>
         {job.applyUrl && (
           <a className={styles.applyBtn} href={job.applyUrl} target="_blank" rel="noopener noreferrer">
-            Open listing →
+            {job.directory ? 'Open careers page →' : 'Open job →'}
           </a>
         )}
         <button className={styles.linkToggle} onClick={() => setOpen(!open)}>
-          {open ? 'Hide outreach' : 'Ping people on LinkedIn'}
+          {open ? 'Hide LinkedIn' : 'Find people on LinkedIn'}
         </button>
       </div>
 
@@ -53,9 +73,6 @@ export default function CompanyCard({ job }) {
               <span className={styles.outreachWhy}>{p.why}</span>
             </a>
           ))}
-          {job.missingSkills?.length > 0 && (
-            <p className={styles.missing}>Gaps to address in your message: {job.missingSkills.join(', ')}</p>
-          )}
         </div>
       )}
     </div>
